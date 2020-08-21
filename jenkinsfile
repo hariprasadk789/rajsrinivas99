@@ -1,0 +1,78 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Build') {
+            steps {
+                // Get some code from a GitHub repository
+                git 'https://github.com/hariprasadk789/h1.git/'
+
+                // Run Maven on a Unix agent.
+                sh "mvn install"
+
+                // To run Maven on a Windows agent, use
+                // bat "mvn -Dmaven.test.failure.ignore=true clean package"
+            }
+            stage('docker-buid'){
+                steps{
+
+                  sh 'docker build -t pdss-integration-test-tool:jenkins -f Dockerfile'
+
+
+
+                }
+                
+            }
+
+
+
+
+
+stage("Upload ITT Image") {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'sp-bixby-eng-hq-9121', variable: 'GC_KEY')]) {
+                        sh "docker tag pdss-integration-test-tool:jenkins ${REPOSITORY}/${PROJECT_ID}/pdss-integration-test-tool:${IMAGE_VERSION}"
+                        sh "gcloud auth activate-service-account --key-file=${GC_KEY}"
+                        sh "gcloud auth configure-docker"
+                        sh "docker push ${REPOSITORY}/${PROJECT_ID}/pdss-integration-test-tool:${IMAGE_VERSION}"
+                        sh "docker rmi --force ${REPOSITORY}/${PROJECT_ID}/pdss-integration-test-tool:${IMAGE_VERSION}"
+                        echo("Pushed image to ${REPOSITORY}/${PROJECT_ID}/pdss-integration-test-tool:${IMAGE_VERSION}")
+                    }
+                }
+            }
+        }
+        
+        stage("Deploy image") {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'gke-gcs', variable: 'GC_KEY')]) {
+                        sh "gcloud auth activate-service-account --key-file=${GC_KEY}"
+                        sh "gcloud config set project sp-bixby-eng-hq-9121"
+                        sh "gcloud config set compute/zone us-west1-a"
+                        sh "gcloud container clusters get-credentials pdss-pdss-eng"
+                        sh "kubectl delete pod pdss-integration-test-tool -n pdss-itt --ignore-not-found=true --wait=true"
+                        sh "kubectl apply -f docker/deployment-itt.yaml"
+                        sh "kubectl wait --for=condition=Ready pod/pdss-integration-test-tool -n pdss-itt"
+                        echo "Pod created & executed Successfully."
+                        sh "sleep 10"
+                        try {
+                        sh "kubectl exec pdss-integration-test-tool /bin/bash run.sh  -n pdss-itt"
+                        } catch (Exception e) {
+                          echo "All PDSS test didn't pass!"  
+                        }
+                        sh "sleep 10"
+                        sh "kubectl cp pdss-itt/pdss-integration-test-tool:/testOffline/offlineIntegrationTestTool-0.1.0-SNAPSHOT/Result.html ./Result.html --container pdss-integration-test-tool"
+                        echo "Copying result done."
+                        sh "kubectl cp pdss-itt/pdss-integration-test-tool:/testOffline/offlineIntegrationTestTool-0.1.0-SNAPSHOT/ResultSummary.html ./ResultSummary.html --container pdss-integration-test-tool"
+                        echo "Copying result summary done."
+                        sh "kubectl delete pod pdss-integration-test-tool -n pdss-itt --ignore-not-found=true --ignore-not-found=true --wait=true"
+                        
+						echo "Deleted resources and namespace."
+                        echo "Deployment finished Successfully."        
+                    }
+                   
+                }
+            }
+        }
+
