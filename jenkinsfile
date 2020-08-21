@@ -28,7 +28,7 @@ pipeline {
 
 
 
-stage("Upload ITT Image") {
+     stage("Upload ITT Image") {
             steps {
                 script {
                     withCredentials([file(credentialsId: 'sp-bixby-eng-hq-9121', variable: 'GC_KEY')]) {
@@ -43,7 +43,7 @@ stage("Upload ITT Image") {
             }
         }
         
-        stage("Deploy image") {
+      stage("Deploy image") {
             steps {
                 script {
                     withCredentials([file(credentialsId: 'gke-gcs', variable: 'GC_KEY')]) {
@@ -55,22 +55,8 @@ stage("Upload ITT Image") {
                         sh "kubectl apply -f docker/deployment-itt.yaml"
                         sh "kubectl wait --for=condition=Ready pod/pdss-integration-test-tool -n pdss-itt"
                         echo "Pod created & executed Successfully."
-                        sh "sleep 10"
-                        try {
-                        sh "kubectl exec pdss-integration-test-tool /bin/bash run.sh  -n pdss-itt"
-                        } catch (Exception e) {
-                          echo "All PDSS test didn't pass!"  
-                        }
-                        sh "sleep 10"
-                        sh "kubectl cp pdss-itt/pdss-integration-test-tool:/testOffline/offlineIntegrationTestTool-0.1.0-SNAPSHOT/Result.html ./Result.html --container pdss-integration-test-tool"
-                        echo "Copying result done."
-                        sh "kubectl cp pdss-itt/pdss-integration-test-tool:/testOffline/offlineIntegrationTestTool-0.1.0-SNAPSHOT/ResultSummary.html ./ResultSummary.html --container pdss-integration-test-tool"
-                        echo "Copying result summary done."
-                        sh "kubectl delete pod pdss-integration-test-tool -n pdss-itt --ignore-not-found=true --ignore-not-found=true --wait=true"
+                      
                         
-						echo "Deleted resources and namespace."
-                        echo "Deployment finished Successfully."        
-                    }
                    
                 }
             }
